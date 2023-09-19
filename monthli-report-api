@@ -1,0 +1,119 @@
+from http.client import HTTPException
+from fastapi import FastAPI, UploadFile, File, Header
+from fastapi.responses import FileResponse
+import os
+import tempfile
+import zipfile
+import pandas as pd
+from fastapi.security import api_key
+from openpyxl import load_workbook
+from openpyxl.styles import Font, Color, PatternFill, Alignment
+from openpyxl.worksheet.table import Table, TableStyleInfo
+from openpyxl import Workbook
+import shutil
+import uvicorn
+
+
+monthly_api = FastAPI()
+API_KEY = "@@@123456@@@"
+
+def process_zip_file(zip_file_path, extracted_folder):
+    with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
+        zip_ref.extractall(extracted_folder)
+
+    column_data = {'B1': [], 'F': [], 'I': [], 'J': [], 'K': []}
+
+    for root, dirs, files in os.walk(extracted_folder):
+        for file in files:
+            if file.endswith(".xlsx"):
+                file_path = os.path.join(root, file)
+
+                wb = load_workbook(file_path, data_only=True)
+                sheet = wb.active
+                last_row = sheet.max_row
+
+                b1_value = sheet['B1'].value
+
+                last_row_data = []
+                for col in ['F', 'I', 'J', 'K']:
+                    last_row_data.append(sheet[f'{col}{last_row}'].value)
+
+                column_data['B1'].append(b1_value)
+                column_data['F'].append(last_row_data[0])
+                column_data['I'].append(last_row_data[1])
+                column_data['J'].append(last_row_data[2])
+                column_data['K'].append(last_row_data[3])
+
+    return column_data
+
+def create_excel_file(data_frame):
+    new_excel_path = os.path.expanduser("~/Desktop/final_excel_file.xlsx")
+    data_frame.to_excel(new_excel_path, index=False)
+
+    wb = load_workbook(new_excel_path)
+    ws = wb.active
+
+    tab = Table(displayName="MyTable", ref=ws.dimensions)
+    style = TableStyleInfo(
+        name="TableStyleMedium13", showFirstColumn=False,
+        showLastColumn=False, showRowStripes=True, showColumnStripes=False)
+    tab.tableStyleInfo = style
+
+    for column_letter in ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K']:
+        ws.column_dimensions[column_letter].width = 20
+
+    ws.add_table(tab)
+
+    wb.save(new_excel_path)
+
+    return new_excel_path
+
+
+@monthly_api.post("/process-zip-files-monthly/")
+async def process_zip_files_monthly(files: list[UploadFile] , api_key: str = Header(None)):
+
+    if api_key != API_KEY:
+        raise HTTPException(status_code=403, detail="Invalid API Key")
+
+
+    if len(files) != 2:
+        return "Please upload exactly 2 ZIP files."
+
+    extracted_folders = []
+    column_data = []
+    for file in files:
+        extracted_folder = tempfile.mkdtemp()
+        with open(os.path.join(extracted_folder, file.filename), "wb") as f:
+            f.write(file.file.read())
+        extracted_folders.append(extracted_folder)
+        column_data.append(process_zip_file(os.path.join(extracted_folder, file.filename), extracted_folder))
+
+    data = {
+        'نام کارشناس': column_data[0]['B1'] + column_data[1]['B1'],
+        'بستن گفتگو': column_data[0]['F'] + column_data[1]['F'],
+        'میانگین زمان اولین پاسخ': column_data[0]['I'] + column_data[1]['I'],
+        'رضایت کاربران': column_data[0]['J'] + column_data[1]['J'],
+        'تعداد نظرسنجی': column_data[0]['K'] + column_data[1]['K']
+    }
+
+    new_df = pd.DataFrame(data)
+
+    new_df['رضایت کاربران'] = new_df['رضایت کاربران'].str.rstrip('%').astype(float)
+
+    duplicate_mask = new_df.duplicated(subset=['نام کارشناس'], keep=False)
+
+    to_delete_mask = (duplicate_mask) & (new_df['بستن گفتگو'] < new_df[duplicate_mask]['بستن گفتگو'].max()) & (
+            new_df['بستن گفتگو'] < 5)
+
+    new_df.drop(new_df[to_delete_mask].index, inplace=True)
+
+    new_excel_path = create_excel_file(new_df)
+
+    return FileResponse(new_excel_path, headers={"Content-Disposition": "attachment; filename=final_excel_file.xlsx"})
+
+if __name__ == "__main__":
+    uvicorn.run(monthly_api, host="127.0.0.1", port=5000)
+
+
+#uvicorn api_monthly:monthly_api
+# http://127.0.0.1:5000/process-zip-files-monthly/
