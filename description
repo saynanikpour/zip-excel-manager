@@ -1,0 +1,26 @@
+This code creates a web application using the Flask framework, allowing the processing of two ZIP files containing Excel (XLSX) files. Below is a detailed explanation of the functions and the main functionality of the code:
+
+1. **Importing Modules and Libraries**: The code imports various modules and libraries, including os for file system management, tempfile for creating temporary directories, zipfile for working with ZIP files, pandas for data manipulation, openpyxl for Excel file management, Flask for creating a web application, and shutil for file management operations.
+
+2. **Functions `process_zip_file` and `create_excel_file`**:
+   - `process_zip_file`: This function is responsible for extracting the required information from XLSX files within ZIP archives. It uses the openpyxl library to read data from Excel files and stores it in a dictionary.
+   - `create_excel_file`: This function creates a new Excel file and saves data in it. It also adds a table to the Excel file and applies formatting settings.
+
+3. **Defining a Flask Web Application**: The web application is defined using the Flask framework. The application includes a main page that displays an upload form for two ZIP files.
+
+4. **Processing POST Requests**: If a user uploads two ZIP files and submits the form, the uploaded ZIP files are extracted, and the required data is sent to the `process_zip_file` functions. Then, the data is collected from the two ZIP files and combined to create a Pandas DataFrame.
+
+5. **Data Processing**:
+   - Data received from the two ZIP files is combined.
+   - The "رضایت کاربران" (user satisfaction) column is converted from percentages to floating-point numbers.
+   - A mapping of scores to decimals for the "رضایت کاربران" column is applied.
+
+6. **Removing Duplicate Data**: Duplicate data is removed from the DataFrame based on the "نام کارشناس" (expert name) column. Additionally, data with specific conditions are deleted.
+
+7. **Creating the Final File**: A new Excel file is created, and the final data is stored in it. A table is added to the Excel file, and formatting settings are applied.
+
+8. **Sending the Final File to the User**: The final Excel file is sent to the user for download.
+
+9. **Running the Web Application**: The web application is executed using `app.run()`, and debug mode is enabled.
+
+This web application allows users to upload two ZIP files, processes the data, and provides a download link for a final Excel file containing aggregated data from the two ZIP files.
