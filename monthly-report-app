@@ -1,0 +1,207 @@
+import os
+import tempfile
+import zipfile
+import pandas as pd
+from openpyxl import load_workbook
+from openpyxl.styles import Font, Color, PatternFill, Alignment
+from openpyxl.worksheet.table import Table, TableStyleInfo
+from openpyxl import Workbook
+import shutil
+from flask import Flask, render_template, request, send_file
+
+
+app = Flask(__name__)
+
+def process_zip_file(zip_file_path, extracted_folder):
+    with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
+        zip_ref.extractall(extracted_folder)
+
+    column_data = {'B1': [], 'F': [], 'I': [], 'J': [], 'K': []}
+
+    for root, dirs, files in os.walk(extracted_folder):
+        for file in files:
+            if file.endswith(".xlsx"):
+                file_path = os.path.join(root, file)
+
+                wb = load_workbook(file_path, data_only=True)
+                sheet = wb.active
+                last_row = sheet.max_row
+
+                b1_value = sheet['B1'].value
+
+                last_row_data = []
+                for col in ['F', 'I', 'J', 'K']:
+                    last_row_data.append(sheet[f'{col}{last_row}'].value)
+
+                column_data['B1'].append(b1_value)
+                column_data['F'].append(last_row_data[0])
+                column_data['I'].append(last_row_data[1])
+                column_data['J'].append(last_row_data[2])
+                column_data['K'].append(last_row_data[3])
+
+    return column_data
+
+def create_excel_file(data_frame):
+    new_excel_path = os.path.expanduser("~/Desktop/final_excel_file.xlsx")
+    data_frame.to_excel(new_excel_path, index=False)
+
+    wb = load_workbook(new_excel_path)
+    ws = wb.active
+
+    tab = Table(displayName="MyTable", ref=ws.dimensions)
+    style = TableStyleInfo(
+        name="TableStyleMedium13", showFirstColumn=False,
+        showLastColumn=False, showRowStripes=True, showColumnStripes=False)
+    tab.tableStyleInfo = style
+
+    for column_letter in ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K']:
+        ws.column_dimensions[column_letter].width = 20
+
+    ws.add_table(tab)
+
+    wb.save(new_excel_path)
+
+    return new_excel_path
+
+
+@app.route('/', methods=['GET', 'POST'])
+def main():
+
+    if request.method == 'POST':
+        uploaded_files = request.files.getlist('file')
+
+        if len(uploaded_files) != 2:
+            return "Please upload exactly 2 ZIP files."
+
+        extracted_folders = []
+        column_data = []
+        for i, uploaded_file in enumerate(uploaded_files):
+            extracted_folder = tempfile.mkdtemp()
+            uploaded_file.save(os.path.join(extracted_folder, uploaded_file.filename))
+            extracted_folders.append(extracted_folder)
+            column_data.append(process_zip_file(os.path.join(extracted_folder, uploaded_file.filename), extracted_folder))
+
+        data = {
+            'نام کارشناس': column_data[0]['B1'] + column_data[1]['B1'],
+            'بستن گفتگو': column_data[0]['F'] + column_data[1]['F'],
+            'میانگین زمان اولین پاسخ': column_data[0]['I'] + column_data[1]['I'],
+            'رضایت کاربران': column_data[0]['J'] + column_data[1]['J'],
+            'تعداد نظرسنجی': column_data[0]['K'] + column_data[1]['K']
+        }
+
+        new_df = pd.DataFrame(data)
+
+        new_df['رضایت کاربران'] = new_df['رضایت کاربران'].str.rstrip('%').astype(float)
+
+        score_mapping = {
+                100: 5,
+                99: 5,
+                98: 4.99,
+                97: 4.99,
+                96: 4.98,
+                95: 4.98,
+                94: 4.97,
+                93: 4.96,
+                92: 4.94,
+                91: 4.92,
+                90: 4.9,
+                89: 4.88,
+                88: 4.86,
+                87: 4.84,
+                86: 4.82,
+                85: 4.8,
+                84: 4.78,
+                83: 4.76,
+                82: 4.74,
+                81: 4.72,
+                80: 4.7,
+                79: 4.68,
+                78: 4.66,
+                77: 4.64,
+                76: 4.62,
+                75: 4.6,
+                74: 4.58,
+                73: 4.56,
+                72: 4.54,
+                71: 4.52,
+                70: 4.5,
+                69: 4.48,
+                68: 4.46,
+                67: 4.44,
+                66: 4.42,
+                65: 4.4,
+                64: 4.38,
+                63: 4.36,
+                62: 4.34,
+                61: 4.32,
+                60: 4.3,
+                59: 4.28,
+                58: 4.26,
+                57: 4.24,
+                56: 4.22,
+                55: 4.2,
+                54: 4.18,
+                53: 4.16,
+                52: 4.14,
+                51: 4.12,
+                50: 4.1,
+                49: 4,
+                48: 3.9,
+                47: 3.96,
+                46: 3.94,
+                45: 3.92,
+                44: 3.9,
+                43: 3.88,
+                42: 3.86,
+                41: 3.84,
+                40: 3.82,
+                39: 3.8,
+                38: 3.78,
+                37: 3.76,
+                36: 3.74,
+                35: 3.72,
+                34: 3.7,
+                33: 3.68,
+                32: 3.66,
+                31: 3.64,
+                30: 3.62,
+                29: 3.6,
+                28: 3.58,
+                27: 3.56,
+                26: 3.54,
+                25: 3.52,
+                24: 3.5,
+                23: 3.48,
+                22: 3.46,
+                21: 3.44,
+                20: 3.42,
+                19: 3.4,
+                18: 3.38,
+                17: 3.36,
+                16: 3.34,
+                15: 3.32,
+                14: 3.3,
+                13: 3.28,
+                12: 3.26,
+                11: 3.24,
+                10: 3.22
+        }
+
+        new_df['نمره'] = new_df['رضایت کاربران'].map(score_mapping)
+
+        duplicate_mask = new_df.duplicated(subset=['نام کارشناس'], keep=False)
+
+        to_delete_mask = (duplicate_mask) & (new_df['بستن گفتگو'] < new_df[duplicate_mask]['بستن گفتگو'].max()) & (
+                new_df['بستن گفتگو'] < 5)
+
+        new_df.drop(new_df[to_delete_mask].index, inplace=True)
+
+        new_excel_path = create_excel_file(new_df)
+
+        return send_file(new_excel_path, as_attachment=True, download_name='final_excel_file.xlsx')
+
+    return render_template('index.html')
+
+
+if __name__ == '__main__':
+    app.run(debug=True)
